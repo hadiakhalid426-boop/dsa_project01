@@ -49,30 +49,94 @@ public:
     // Implement these functions:
     Stack()
     { // initialize the stack
+        count =0;
+        top = nullptr;
+
     }
     void push(const T &val)
     {
 
         // pushes the value on the stack if max limit is not reached yet.
+        if(count>=MAX_STACK_DEPTH){
+            return;
+
+        }
+        Node *newNode = new Node;
+
+        newNode->data = val;
+        newNode->next = top;
+
+        top = newNode;
+
+        count++;
+
+
     }
+
     T pop()
     {
         // pop the top value on the stack
+        if(isEmpty()){
+            return T();
+
+        }
+
+        T value =top->data;
+        
+        Node *temp = top;
+        top= top->next;
+        count--;
+        //have to delete left out node verna reh jayega
+        delete temp;
+         
+        return value;
+
+
     }
     T &peek()
     {
         // returns the top value on the stack
+        return top->data;
+
+
     }
     bool isEmpty()
     {
+        return top == nullptr;
     }
     int32_t depth()
     {
+        return count;
     }
     int32_t snapshot_into(T out[], int32_t maxLen)
     {
         // copies every frame, top to bottom in the array given as a parameter
         // this is what buildSnapshot() call, returns count written
+
+        //my understanding while implementing this func:
+
+        //so basically hamare pas frame aik current 
+        // function ki state hoti hai, is tarha ham pure code ki
+        //state agar aik stack me frame by frame kerke store kerleyin
+        //to we aik scnapshot hoga ig?
+        //and then like kafi sare snapshots se timeline banti hai
+
+        //meaning copied tells stack ke nodes/frames?
+
+        Node *current=top;
+        int32_t copied=0;
+
+        while(current!= nullptr && copied<maxLen){
+            out[copied] =current->data;
+            copied++;
+
+            current= current->next;
+
+        }
+        return copied;
+
+
+
     }
 };
 
@@ -94,16 +158,52 @@ public:
     // Implement these functions
     Timeline()
     {
+
+        head =nullptr;
+        tail=nullptr;
+
+        stepCount =0;
+
     }
     void record(Snapshot *s)
     {
         // add record in the timeline
+        //matlab add a snapshot already existing record mein
+        //timeline ka node create kia
+
+        TimeLineNode *newNode = new TimelineNode;
+
+        newNode->data= s;
+        newNode->next=nulptr;
+        //tail update hojayegi
+        newNode->prev = tail;
+
+        if (head == nullptr){
+            head =newNode;
+            tail= newNode;
+            newNode->prev = nullptr;
+        }
+        else{
+
+            newNode->prev = tail;
+            tail->next = newNode;
+            tail = newNode;
+
+        }
+        
+        stepCount++;
+
     }
     TimelineNode *begin()
     {
+        return head;
+
+
     }
     int32_t getStepCount()
     {
+        return stepCount;
+
     }
 };
 
@@ -122,11 +222,13 @@ struct Frame
     Variable locals[MAX_VARS_PER_FRAME];
     int32_t localCount;
 };
+
 struct Snapshot
 {
     Frame callStack[MAX_STACK_DEPTH];
     int32_t stackDepth;
 };
+
 struct TTDBHeader
 {
     char magic[4]; // "TTDB"
