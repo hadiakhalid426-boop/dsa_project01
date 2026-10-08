@@ -119,6 +119,8 @@ public:
         // function ki state hoti hai, is tarha ham pure code ki
         //state agar aik stack me frame by frame kerke store kerleyin
         //to we aik scnapshot hoga ig?
+        // A Snapshot is a copy of the entire call stack at one
+        // particular moment during execution.
         //and then like kafi sare snapshots se timeline banti hai
 
         //meaning copied tells stack ke nodes/frames?
@@ -175,9 +177,9 @@ public:
 
         newNode->data= s;
         newNode->next=nulptr;
-        //tail update hojayegi
-        newNode->prev = tail;
 
+        //we are updating tail if else ke andar
+        
         if (head == nullptr){
             head =newNode;
             tail= newNode;
