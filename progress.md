@@ -36,6 +36,16 @@ we will see the rest when we call them and see kaha use hore hain
 
 
 
+# iam now on 0x0 (is the function valid)
+why inside loop we use size_t instead of int kyuki we are comparing sizes like container lengths .size() etc to size_t is an unsigned integer type guaranteed to be large enough to represent the size of any possible object.
+
+also like we have 32 bit and 64 bit, to i can adapt itself unke liye
+
+
+
+
+
+
 
 
 
