@@ -19,6 +19,8 @@
 #include <sys/socket.h>
 #include <cstdint>
 #include <cstdio>
+
+#include <sstream>
 using namespace std;
 
 // ---- Constants ----
@@ -238,12 +240,14 @@ struct TTDBHeader
     int32_t stepCount;
     int64_t indexOffset;
 };
+
 void writeHeader(FILE *f, const TTDBHeader &h)
 {
     fwrite(h.magic, 1, 4, f);
     fwrite(&h.version, sizeof(int32_t), 1, f);
 
     // placeholder for other two data members
+
 }
 
 // resolve.bin - bookkeeping
@@ -264,18 +268,117 @@ struct PendingPatch
 bool readSourceLine(ifstream &in, string &out)
 {
     // reads the next nonblank line
+
+
+    //ham normally getline use kerte hain and if statements
+    //se blanks ko ignore kerte hai
+
+    while(getline(in, out)){
+        bool blank= true;
+
+        for(size_t i=0; i<out.length(); i++){
+            char c =out[i];
+
+            if( c!= ' ' && c!= '\t' && c!= '\r'){
+
+                blank= false;
+                break;
+            }
+
+        }
+
+        if(blank == false){
+
+            return true;
+        }
+    }
+    return false;
+
 }
 string firstWord(const string &line)
 {
     // returns first word from the input string
+
+    //including sstream for it so taking a word out of line is easy
+
+    stringstream list(line);
+
+    string word;
+    list>> word;
+
+    return word;
+
 }
+
 string secondWord(const string &line)
 {
     // returns the second word
+    stringstream list(line);
+
+    string word1;
+    string word2;
+    list>> word1;
+    list>>word2;
+
+
+    return word2;
 }
 bool validateProgram(const char *sourcePath)
 {
     // for each func defined there should be exactly one func_end and no nested funcs allowed - 
+
+    ifstream in(sourcePath);
+
+    if(! in.is_open()){
+        cout<<"error : file not open"<<endl;
+        return false;
+
+    }
+
+    string line;
+    bool inside= false;
+    //to check ifmwe have entered a func or not
+
+    while(readSourceLine(in, line)){
+        string keyword= firstWord(line);
+        //technically just read line by line (skippign space ofc)
+
+        if(keyword =="func"){
+            if(inside == true){
+                //meanign. pehle se he tru nai hona chaiye
+                cout<< "error : nested func not allowed";
+                return false;
+
+            }
+            inside=true;
+
+
+        }
+        else if( keyword== "func_end"){
+            if(inside == false){
+                //func ke andar hona chaiye
+
+                cout<<"error: func_end cannot exist without func";
+                return false;
+
+
+            }
+            inside=false;
+
+        }
+    }
+    //reachign file end without its closing:
+
+    if(inside){
+        cout<< "error: missing func end";
+        return false;
+
+    }
+
+    return true;
+    //this resembels validating bracket probleam but here nested
+    //he allow nai hain, verna stack use kerte
+    
 }
 
 // PASS 0x1: RESOLVE() -> resolve.bin
