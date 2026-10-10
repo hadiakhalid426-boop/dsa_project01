@@ -12,3 +12,31 @@ Then I implemented the timeline class, was technically a doubly linked list but 
 
 There were no such difficulties in implementing it, bas record wala func mey aik masla aya tha wo sahi kerlia.
 
+# understanding every struct
+
+variable: isme bas name or uski vale store kerni
+
+frame: hamey aik function call ki state pata chalti hai
+
+jiske andar funcation name ayega, argc tells us ke func me kitne parameters aye hain,
+
+or in argv ki array we have function ke parameters values
+
+locals are the variables jo fucntion ke andar baney and so we have locals ka count. 
+
+returnLine tells ke jab fucntion execute hogya pur to kaha ja ker continue hona in main?
+
+like this hamare pas frame stack hai jisme har fucntion ki call state store hoti hai.
+
+snapshot: live state of pura stack, copy kerke rakh leta, and stack depth is us time per us copy huye huye ki depth
+
+TTDBHeader: it is for .tdbg file , binary debigger file?
+
+we will see the rest when we call them and see kaha use hore hain
+
+
+
+
+
+
+
