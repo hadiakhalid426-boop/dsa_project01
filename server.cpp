@@ -386,10 +386,65 @@ int64_t writeResolveRecord(FILE *f, int64_t offsetField, const string &text)
 {
     // writes one [offset(8B)][size(4B)][string] record at the current file position
     // returns this record's own starting byte position
+
+    //to return we have to store before kaha par file write keregi yk
+    //usinf ftell
+    int64_t start= ftell(f);
+
+    //first of all writing down offset jiska size 8 bytes ka hota
+    fwrite(&offsetField, sizeof(int64_t), 1, f);
+    //now we will write size of string, which is not given so we
+    //calculate size of string 
+    // we could write this: int32_t size= text.size();
+    //but yaha size field ki wajha se ham intentioanlly convert kerenge:
+    int32_t size =static_cast<int32_t>(text.size());
+    fwrite(&size, sizeof(int32_t), 1, f); //4 bytes yaha
+    //now write complete string
+    fwrite(text.data(), 1, size, f); //each item is of 1 byte
+
+    return start;
+
+
+
+
+
 }
 int64_t readResolveRecord(FILE *f, string &outText)
 {
     // reads one record at the current position and advances past it, returns the offset field - the raw line text comes back untouched in outText.
+    int64_t offset;
+    int32_t size;
+    //it is possible that we try reading file when its at its end
+
+
+    if(fread(&offset, sizeof(int64_t), 1, f) !=1){
+        return -1;
+
+    }
+    if(fread(&size, sizeof(int32_t), 1, f)!=1){
+        return -1;
+
+    }
+    //invalid size bhe ho sakta hai
+    if(size<0 || size> MAX_SOURCE_BYTES){
+        return -1;
+
+    }
+
+
+    //string ko size ka kerna jis size ka text likha hua so:
+    outText.resize(size);
+
+    //fread returns number of complete items successfully read
+    //isliye =1 wali condition hai
+
+    if(fread(outText.data(), 1, size, f)!= static_cast<size_t>(size)){
+        return -1;
+
+    }
+
+    return offset;
+
 }
 int64_t resolveProgram(const char *sourcePath, const char *resolveBinPath)
 {
