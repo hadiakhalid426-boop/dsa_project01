@@ -41,6 +41,26 @@ why inside loop we use size_t instead of int kyuki we are comparing sizes like c
 
 also like we have 32 bit and 64 bit, to i can adapt itself unke liye
 
+# ON 0x1
+why we need source.bin and resolve.bin: to jump over cause we have calls etc yk
+
+resolve.bin has offset is of 8 bytes, string size is of 4 bytes, string is of that many bytes jitna string ka size ho
+
+we have next offset ka formula = offset+8+ 4+ string size
+
+we can later on say is offset per ye record rakha hai
+
+achah iam writing my understanding and explainations comments me bhe sath sath, baki necessary cheeze idher add ker ri
+
+write resolve record me size nai given to wo ham khud calculate ker lete hain
+
+firsrt i simply wrote it like: int32_t size = text.size(), lekin phir because binary file format ke liye size filed int 32 hai, or text.size size t return kerta, so intentionally convert kerne ke liye
+
+Pichli baar write kerte huye hum file format ke liye cast kar rahe thay int 32 mein. Ab hum function return type ke saath comparison ke liye cast kar rahe hain size t me
+
+fread() returns size_t, while size is int32_t.
+Convert size to size_t for a type-consistent comparison.
+
 
 
 
