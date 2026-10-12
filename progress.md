@@ -81,6 +81,12 @@ JAB FUNC ENCOUTNER KEREYIN TO YAD RAKHNA HAI KE : starting byte position of its 
 JAB CALL ENCOUNTE RKERYEIN TO PHIR YAD RAKHNA HAI: IS CALL record ke offset field mein baad mein FUNC ka address likhna hai
 
 
+#checking resolver chal ra hai ya nai
+
+<img width="1268" height="402" alt="image" src="https://github.com/user-attachments/assets/e1578106-71c5-4f42-ae6f-700349309862" />
+
+
+
 
 
 
