@@ -62,6 +62,26 @@ fread() returns size_t, while size is int32_t.
 Convert size to size_t for a type-consistent comparison.
 
 
+acha so last resolve program wale func mein, jab hamare pas func ho to hamne fun array me stor ekerni uski position and name, or jab call to positon and name in patches
+
+in resolver wb+ means:
+
+w = create/truncate the file
+
+b = binary mode.
+
++ = allow both reading and writing
+
+Because resolver pehle records write karega, phir wapas seek karke CALL offsets overwrite karega.
+
+writeResolveRecord() humein record ki starting position return karta hai, Hum isi position ko FuncEntry aur PendingPatch mein use karenge.
+
+JAB FUNC ENCOUTNER KEREYIN TO YAD RAKHNA HAI KE : starting byte position of its FUNC record
+
+JAB CALL ENCOUNTE RKERYEIN TO PHIR YAD RAKHNA HAI: IS CALL record ke offset field mein baad mein FUNC ka address likhna hai
+
+
+
 
 
 
