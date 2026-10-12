@@ -81,9 +81,13 @@ JAB FUNC ENCOUTNER KEREYIN TO YAD RAKHNA HAI KE : starting byte position of its 
 JAB CALL ENCOUNTE RKERYEIN TO PHIR YAD RAKHNA HAI: IS CALL record ke offset field mein baad mein FUNC ka address likhna hai
 
 
-#checking resolver chal ra hai ya nai
+# checking resolver chal ra hai ya nai
 
 <img width="1268" height="402" alt="image" src="https://github.com/user-attachments/assets/e1578106-71c5-4f42-ae6f-700349309862" />
+
+<img width="1164" height="250" alt="image" src="https://github.com/user-attachments/assets/af434e98-fac4-48c6-8a94-33773c121238" />
+
+prove cal patched at 63 and func foo starts at 63 aswell
 
 
 
