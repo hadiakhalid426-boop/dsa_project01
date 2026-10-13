@@ -1,0 +1,8 @@
+func main
+set k 10
+call foo k
+add k 2
+func_end
+func foo b
+add b 5
+func_end

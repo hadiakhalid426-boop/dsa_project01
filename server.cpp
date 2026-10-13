@@ -511,7 +511,7 @@ int64_t resolveProgram(const char *sourcePath, const char *resolveBinPath)
         if (keyword == "call") {
             storedOffset = 0;
         }
-        
+
         //records should have their next record offset, ye 0 placeholder hai
         // while call records will contain their 
         // function target
@@ -673,6 +673,36 @@ struct Token
 };
 int32_t tokenizeLine(const string &line, Token tokens[], int32_t maxTokens)
 {
+    stringstream ss(line);
+    string word;
+    int32_t count=0;
+
+    while(ss>> word){
+        if(count>= maxTokens){
+        throw runtime_error("too many tokens");
+
+        }
+        tokens[count].text = word;
+
+        if(count==0){
+            tokens[count].type =KEYWORD;
+
+        }
+        else if(count ==1){
+            tokens[count].type= IDENTIFIER;
+
+        }
+        else{
+            tokens[count].type= PARAM;
+        }
+
+        count++;
+    
+    }
+
+    return count;
+    //taake executor ko pata ho kitne tokens valid hain
+
     // first word is always a instruction keyword
     // instruction set = [func, func_end, call, set, add, sub, mul and div]
     // next word is identifier like name of a function, variable name
@@ -681,12 +711,345 @@ int32_t tokenizeLine(const string &line, Token tokens[], int32_t maxTokens)
 Snapshot *buildSnapshot(Stack<Frame> &callStack)
 {
     // build the snapshot based on the callStack given
+    Snapshot* snap= new Snapshot;
+
+    snap->stackDepth= callStack.snapshot_into(snap->callStack, MAX_STACK_DEPTH);
+
+    return snap;
 }
+
+//varibales can be at twp places, ya to parameter ho sakte ya local func ke andar bane
+//hosakte isliey we are making this helper
+Variable* findVariable(Frame &frame, const string &name)
+{
+    for (int32_t i = 0; i < frame.argc; i++)
+    {
+        if (frame.argv[i].name == name)
+        {
+            return &frame.argv[i];
+        }
+    }
+
+    for (int32_t i = 0; i < frame.localCount; i++)
+    {
+        if (frame.locals[i].name == name)
+        {
+            return &frame.locals[i];
+        }
+    }
+
+    return nullptr;
+}//ye dono jagha search kwer leta
+
+//ab e.g add x y mein y ko number treat kerna hai ya variablename isliye
+
+int32_t getValue(Frame &frame, const string &operand)
+{
+    Variable *v = findVariable(frame, operand);
+
+    if (v != nullptr)
+    {
+        return v->value;
+    }
+
+    size_t pos = 0;
+
+    try
+    {
+        long value = stol(operand, &pos);
+
+        if (pos != operand.size() ||
+            value < INT32_MIN ||
+            value > INT32_MAX)
+        {
+            throw runtime_error("Invalid operand: " + operand);
+        }
+
+        return static_cast<int32_t>(value);
+    }
+    catch (const invalid_argument &)
+    {
+        throw runtime_error("Undefined variable: " + operand);
+    }
+    catch (const out_of_range &)
+    {
+        throw runtime_error("Number out of range: " + operand);
+    }
+}
+
 void executeProgram(const char *resolveBinPath, int64_t mainOffset, Timeline &timeline)
 {
+
+    FILE *f = fopen(resolveBinPath, "rb");
+
+    if (f == nullptr){
+        throw runtime_error("Cannot open resolve.bin");
+    }
     // initialize the call stack
+    Stack<Frame> callStack;
     // make the main frame
+    Frame mainFrame{};
+    mainFrame.func_name = "main";
+    mainFrame.argc = 0;
+    mainFrame.localCount = 0;
+    mainFrame.returnLine = -1;
     // push main frame on the call stack
+    callStack.push(mainFrame);
+
+    int64_t pc=mainOffset;
+
+    Stack<string> bindingStack;
+    Stack<int32_t> argumentCountStack;
+
+    while(!callStack.isEmpty()){
+
+        //move kerenge instruction per jo execute kerni:
+        if (fseek(f, static_cast<long>(pc), SEEK_SET) != 0){
+            fclose(f);
+            throw runtime_error("Failed to seek instruction");
+        }
+
+        string line;
+        int64_t recordOffset = readResolveRecord(f, line);
+
+        if (recordOffset == -1){
+            fclose(f);
+            throw runtime_error("Failed to read instruction");
+        }
+
+        //ab ftell point kerega agle recor dko
+
+        long nextPosition =ftell(f);
+        if(nextPosition <0){
+            fclose(f);
+            throw runtime_error("failed to get next position");
+        }
+        
+        int64_t nextPc = static_cast<int64_t>(nextPosition);
+
+        Token tokens[MAX_TOKENS];
+        int32_t tokenCount = tokenizeLine(line, tokens, MAX_TOKENS);
+
+        if (tokenCount == 0){       
+            pc = nextPc;
+            continue;
+        }
+
+        string keyword = tokens[0].text;
+        cout << "Executing: " << line << endl;
+
+        Frame &current = callStack.peek();
+
+        if (keyword == "func"){
+
+        // The frame was already created by main initialization
+        // or by a call instruction.
+            if (tokenCount < 2 || tokens[1].text != current.func_name){
+                throw runtime_error("Unexpected function header");
+            }
+        }
+
+        else if (keyword == "set"){
+
+            if (tokenCount != 3){
+                throw runtime_error("Invalid set instruction");
+            }
+
+            string name = tokens[1].text;
+            int32_t value = getValue(current, tokens[2].text);
+
+            Variable *v = findVariable(current, name);
+
+            if (v != nullptr){
+
+                v->value = value;
+            }
+            else{
+                if (current.localCount >= MAX_VARS_PER_FRAME){
+
+                    throw runtime_error("Too many local variables");
+                }
+
+                current.locals[current.localCount].name = name;
+                current.locals[current.localCount].value = value;
+                current.localCount++;
+            }
+        }
+        else if (keyword == "add" || keyword == "sub" || keyword == "mul" || keyword == "div"){
+            
+            if (tokenCount != 3){
+
+                throw runtime_error("Invalid arithmetic instruction");
+            }
+
+            Variable *target = findVariable(current, tokens[1].text);
+
+            if (target == nullptr){
+
+                throw runtime_error("Undefined target variable");
+            }
+
+            int32_t operand = getValue(current, tokens[2].text);
+
+            int64_t result = target->value;
+
+            if (keyword == "add")
+            {
+                result += operand;
+            }
+            else if (keyword == "sub")
+            {
+                result -= operand;
+            }
+            else if (keyword == "mul")
+            {
+                result *= operand;
+            }
+            else if (keyword == "div")
+            {       
+                if (operand == 0)
+                {
+                    throw runtime_error("Division by zero");
+                }
+
+                result /= operand;
+            }
+
+            if (result < INT32_MIN || result > INT32_MAX){
+
+                throw runtime_error("Arithmetic overflow");
+            }
+
+            target->value = static_cast<int32_t>(result);
+        }       
+
+        else if (keyword == "call"){
+
+            if (tokenCount < 2)
+            {
+                throw runtime_error("Invalid call instruction");
+            }
+
+            int32_t argumentCount = tokenCount - 2;
+
+            if (argumentCount > MAX_VARS_PER_FRAME)
+            {
+                throw runtime_error("Too many arguments");
+            }       
+
+            if (callStack.depth() >= MAX_STACK_DEPTH){
+                throw runtime_error("Stack overflow");
+            }
+
+            // recordOffset contains the patched function address.
+            int64_t targetPc = recordOffset;
+
+            if (targetPc < 0){
+
+                throw runtime_error("Invalid call target");
+            }
+
+            // Read the target function's header.
+            if (fseek(f, static_cast<long>(targetPc), SEEK_SET) != 0){
+
+                throw runtime_error("Cannot seek to called function");
+            }
+
+            string headerLine;
+            if (readResolveRecord(f, headerLine) ==-1){
+
+                throw runtime_error("Failed to read function header");
+
+            }
+            Token headerTokens[MAX_TOKENS];
+            int32_t headerCount =
+                tokenizeLine(headerLine, headerTokens, MAX_TOKENS);
+
+            if (headerCount < 2 || headerTokens[0].text != "func" || headerTokens[1].text != tokens[1].text){
+                throw runtime_error("Invalid function target");
+            }
+
+            int32_t parameterCount = headerCount - 2;
+
+            if (parameterCount != argumentCount){
+
+                throw runtime_error("Argument count mismatch");
+            }
+
+            if (nextPc > INT32_MAX){
+
+                throw runtime_error("Return address out of range");
+            }
+
+            Frame newFrame{};
+            newFrame.func_name = headerTokens[1].text;
+            newFrame.argc = argumentCount;
+            newFrame.localCount = 0;
+            newFrame.returnLine = static_cast<int32_t>(nextPc);
+
+            for (int32_t i = 0; i < argumentCount; i++){
+
+                newFrame.argv[i].name = headerTokens[i + 2].text;
+                newFrame.argv[i].value = getValue(current, tokens[i + 2].text);
+            }
+
+            for (int32_t i = 0; i < argumentCount; i++){
+
+                bindingStack.push(tokens[i + 2].text);
+            }
+
+            argumentCountStack.push(argumentCount);
+
+            callStack.push(newFrame);
+
+            // Jump to the called function's header.
+            pc = targetPc;
+        }   
+        else if (keyword == "func_end"){
+
+            Frame finished = callStack.pop();
+
+            if (callStack.isEmpty()){
+                timeline.record(buildSnapshot(callStack));
+                break;
+            }
+
+            Frame &caller = callStack.peek();
+
+            int32_t count = argumentCountStack.pop();
+
+            for (int32_t i = count - 1; i >= 0; i--){
+                string callerName = bindingStack.pop();
+
+                Variable *original = findVariable(caller, callerName);
+
+                if (original == nullptr){
+                    throw runtime_error("Missing caller variable");
+                }
+
+                original->value = finished.argv[i].value;
+            }
+
+            pc = finished.returnLine;
+        }
+        else{
+
+            throw runtime_error("Unknown instruction: " + keyword);
+        }
+
+        if (keyword != "call" && keyword != "func_end"){
+
+            pc = nextPc;
+
+        }
+
+        // save kernge current call stack state
+        timeline.record(buildSnapshot(callStack));
+
+    }
+
+
+    fclose(f);
 
     // implementation:
     // execute line by line, and according to the keyword perform action
@@ -701,6 +1064,7 @@ void writeTdbg(Timeline &timeline, const char *tdbgPath)
     // after timeline add the index array i the file
     // update the header
 }
+
 // main section
 int32_t main()
 {
@@ -712,10 +1076,14 @@ int32_t main()
     }
 
     int64_t mainOffset = resolveProgram("source.bin", "resolve.bin");
+
+    cout << "mainOffset = " << mainOffset << endl;
     if(mainOffset <0){
+        cout<<"resolver failed"<<endl;
         return 1;
 
     }
+
 
     Timeline timeline;
     try{
@@ -726,9 +1094,37 @@ int32_t main()
         cout<<"error: "<<e.what()<<endl;
         return 1;
     }
-    
 
-    writeTdbg(timeline, "session.tdbg");
+    // writeTdbg(timeline, "session.tdbg");
 
     return 0;
 }
+
+
+
+// int32_t main()
+// {
+//     cout << "Program started!" << endl;
+
+//     bool valid = validateProgram("source.bin");
+
+//     cout << "Validation result = " << valid << endl;
+
+//     if (!valid)
+//     {
+//         cout << "Validation failed!" << endl;
+//         return 1;
+//     }
+
+//     int64_t mainOffset = resolveProgram("source.bin", "resolve.bin");
+
+//     cout << "mainOffset = " << mainOffset << endl;
+
+//     if (mainOffset < 0)
+//     {
+//         cout << "Resolver failed!" << endl;
+//         return 1;
+//     }
+
+//     return 0;
+//}
