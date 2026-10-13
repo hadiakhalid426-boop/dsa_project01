@@ -228,13 +228,6 @@ then pc = finished.returnLine so execution caller mein continue hogi.
 
 reverse loop use kiya because stack LIFO follow karta hai.
 
-## pc wala bug
-
-call mein pc targetPc set ho raha tha and func_end mein returnLine.
-
-lekin end per pc = nextPc dono ko overwrite ker raha tha.
-
-so fix kiya ke nextPc sirf normal instructions ke liye use hoga, call aur func_end ke liye nahi.
 
 ## snapshots record kerna
 
