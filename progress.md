@@ -91,159 +91,154 @@ prove cal patched at 63 and func foo starts at 63 aswell
 
 # ON 0x2 (execution)
 
-ab 0x2 mein resolve.bin ki instructions actually execute kerni hain. 0x1 mein sirf function addresses resolve huye thay, ab variables update honge, function calls hongi and har instruction ke baad snapshot save hoga.
+ab 0x2 mein resolve.bin ki instructions execute kerni hain. 0x1 mein sirf function addresses resolve huye thay, ab variables update honge, function calls hongi and har instruction ke baad snapshot save hoga.
 
-yahan hamara Stack and Timeline finally use horaha hai.
+
 
 # tokenizeLine()
-
-it divides oinstruction separat ewords me
-
-stringstream use kiya for it
-
-count total tokens batata hai. initially return count`miss hogaya tha  wo fix kiya. MAX_TOKENS also checked 
+line ko words mein break kerene ke liye,
+MAX_TOKENS also checked 
 
 # buildSnapshot()
 
 isme new Snapshot banate hain and snapshot_into() current callStack ke frames copy ker deta hai.
 
-stackDepth batata hai kitne frames copy huye.
-
-matlab har instruction ke baad us moment ki state save hojati hai. live stack baad mein change ho bhi jaye to old snapshot same rahega.
+stackDepth batata hai kitne frames copy huye matlab har instruction ke baad us moment ki state save hojati hai. live stack baad mein change ho bhi jaye to old snapshot same rahega.
 
 # findVariable()
 
-variables do jagah ho sakte hain, argv mein parameters ya locals mein local variables.
+variables do jagah ho sakte hain, argv mein parameters ya locals mein local variables, so findVariable dono arrays mein search karta hai.
 
-so findVariable dono arrays mein search karta hai.
-
-agar variable mil jaye to pointer return hota hai warna nullptr.
-
-pointer isliye because original variable ki value update kerni hai yk
+agar variable mil jaye to pointer otherwise nullptr return, pointer isliye because original variable ki value update kerni hai yk
 
 # getValue()
 
-operand hamesha number nahi hota.
+operand hamesha number nahi hota like add x y mein y variable ho sakta hai.
 
-like add x y mein y variable ho sakta hai.
-
-so pehle findVariable se search kerte hain agar variable hai to uski value return.
-
-warna stol() se number mein convert kerte hain
-
-invalid operand ya int32_t range se bahar value ho to error.
-
-# executeProgram() start
-
-resolve.bin ko rb mode mein open kiya because binary file read kerni hai.
-
-then Stack<Frame> callStack banaya and mainFrame push kiya.
-
-mainFrame ka returnLine -1 hai because main kisi aur function se call nahi hua.
-
-pc = mainOffset
-
-pc program counter hai, jo batata hai next instruction kis byte offset per read kerni hai.
-
-# instruction reading loop
-
-while loop tab tak chalega jab tak callStack empty nahi hojata.
-
-fseek se pc wali position per jate hain, readResolveRecord se instruction read kerte hain, and ftell se nextPc milta hai.
-
-then tokenizeLine instruction ko tokens mein divide karta hai.
-
-normally pc nextPc per move karta hai, but call and func_end mein jump hota hai.
-
-# func instruction
-
-func main ya func foo encounter hone per dobara frame push nahi kerte.
-
-main ka frame already push hai and foo ka frame call ke waqt banega.
-
-so bas verify kerte hain ke function name current frame se match karta hai.
-
-# set instruction
-
-set k 10 mein pehle value getValue se milti hai.
-
-then findVariable check karta hai ke k already exist karta hai ya nahi.
-
-agar hai to update, warna locals mein create and localCount increase.
+so findVariable se  pehle variable dhoondta hai, warna stol() se number invalid ya  out of range error check too
 
 
-# add, sub, mul, div
+## executeProgram loop
 
-sabko same else if mein handle kiya because logic similar hai.
-
-target variable find kerte hain, operand ki value lete hain and operation perform kerte hain.
-
-division by zero and arithmetic overflow checks bhi hain.
-
-result temporarily int64_t mein calculate kiya because int32_t se bara ho sakta hai.
-
-## call instruction
-
-like call foo k
-
-resolver ne foo ka address already call record mein patch kiya tha.
-
-so recordOffset se targetPc milta hai.
-
-fseek se foo ka header read kerte hain, jahan se parameter names milte hain.
-
-newFrame banate hain, like foo ka parameter b hoga and uski initial value main ke k se ayegi.
-
-returnLine mein nextPc store hota hai taake foo finish hone ke baad main mein wapas aa sakein.
-
-then frame push hota hai and pc targetPc per jump karta hai.
-
-## bindingStack and argumentCountStack
-
-yahan problem thi ke foo mein parameter b hai but caller mein original variable k hai.
-
-return per k ko update kerne ke liye original name remember karna zaroori hai.
-
-extra struct use nahi karna tha, so two stacks banaye:
-
-Stack<string> bindingStack
-
-Stack<int32_t> argumentCountStack
-
-bindingStack original argument names rakhta hai and argumentCountStack har call ke arguments ka count.
-
-## func_end instruction
-
-func_end per current frame pop hota hai.
-
-agar callStack empty hojaye to main finish and execution stop.
-
-warna caller frame milta hai.
-
-bindingStack and argumentCountStack ki help se callee ke updated parameter values caller ke variables mein copy back kerte hain.
-
-like foo mein b 10 se 15 hua to return per main ka k bhi 15 hojayega.
-
-then pc = finished.returnLine so execution caller mein continue hogi.
-
-reverse loop use kiya because stack LIFO follow karta hai.
+pc is program counter its resolve.bin ka byte number jahan agli instruction rakhi hai.
 
 
-## snapshots record kerna
+whats each iteration doin:
 
-har instruction ke baad timeline ka record update kerdete hain complete stack state save hojati hai.
+1. fseek(pc): file ka pointer us instruction par le jao.
+2. readResolveRecord: wo ek record (offset + size + line) parh lo.
+3. ftell: ab file ka pointer agle record par hai, ye nextPc hai.
+4. tokenizeLine: line ko words mein todo (keyword, naam, params).
+5. Keyword ke hisab se kaam karo, phir snapshot record karo.
 
-like set k 10 ke baad k 10, call foo ke baad main and foo dono frames, and foo return ke baad main ka updated k.
+why we compute next pc call branch se pehle:
+call kerke to pointer called func me chala jayega to it should knwo na ke usne wapis kaha ana hai so pehel se compute kerna hota
 
-isi tarha debugger previous states show kar sakega.
+
+pc ki next movement in diff cases:
+
+- Normal instruction: pc = nextPc (record ke baad wala).
+- call: pc = foo ki position (jump).
+- func_end: pc = returnLine (wapas caller mein, call ke baad wali instruction par).
+
+each instruction:
+
+
+func ke liye our frame is already made isliye yahan naya frame nahi banta. Sirf check hota hai ke header ka naam current frame ke naam se
+match karta hai. Match na ho to "Unexpected function header" error
+
+
+set (e.g  set k 10)  par pehle getValue se value 10 milti hai. Phir findVariable k dekhta hai ke k pehle se hai ya nahi, agar ho to value update hojati verna locals mein naya k banjata.
+
+
+add/ sub/ mul/ div:  (e.g add b 5) par b ko dhoond kar uski value se result nikale ga
+
+
+call: `call foo k` call par us record ke offset me call hone wala pc hota he hai jp target pc hai
+
+
+func_end: current frame pop hota hai and stack khali ho gaya to main khatam verna parameters ki final values asli variables ki values ban jati hain ( jese foo mein b=15, main mein k=15 ki value hoti hai) or pc = returnLine.
+
+
+## Changes after review:
+
+Change 1: Extra stacks (sync aur limit issues wale) hatakar ab boundNames array aur frame.argc use kia hai.
+
+Change 2: Literal arguments (jaise 5) par return hone wala "missing variable" error fix kar diya hai, ab variable na milne par copy back skip ho jata hai.
+
+Change 3: Debugging behtar karne ke liye temporary printTimeline() function lagaya hai jo har snapshot par exact variable aur argument values print karta hai.
+a dikhta. printTimeline
+mein step 5 par foo{b=15} aur main{k=10} saaf dikhta hai, aur galat value foran pakri
+jati.
+
 
 # testing 0x2
 
+<img width="940" height="818" alt="image" src="https://github.com/user-attachments/assets/fb73fdfb-38f4-4f9c-b9c9-b7c3eeb30c0c" />
 
 
-<img width="1120" height="270" alt="image" src="https://github.com/user-attachments/assets/42aedb21-c4a3-4813-a507-77bca2c5fcba" />
+# on 0x3
 
-<img width="882" height="322" alt="image" src="https://github.com/user-attachments/assets/f95b0d53-648f-4351-8b4c-3913d4e92157" />
+ab 0x3 mein timeline ke snapshots ko session.tdbg binary file mein save kerna hai.
+
+0x2 mein snapshots memory mein store horahay thay, ab unko file mein write karenge taake baad mein access kar saken.
+
+# writeInt32(), writeInt64(), writeString()
+
+binary file mein integers write kerne ke liye hain orr strings ko directly write nahi ker sakte because string ke andar pointer waghera hota hai, so pehle length write ki then actual characters.
+
+# writeVariable()
+
+variable mein name and value hai, so writeString se name aur writeInt32 se value save ki.
+
+# writeFrame()
+
+frame mein function name, arguments, returnLine and local variables hotay hain.
+
+so inko one by one write kiya. argv mein sirf argc jitne arguments and locals mein sirf localCount jitne variables not compelte array.
+
+# writeSnapshot()
+
+snapshot mein callStack hota hai, so pehle stackDepth write ki and phir jitne frames hain unko writeFrame se save kiya.
+
+# writeHeader()
+
+header mein TTDB magic, version, stepCount and indexOffset store hota hai.
+
+indexOffset batata hai ke file mein index array kahan start hoti hai.
+
+# writeTdbg()
+
+pehle file open ki and placeholder header write kiya because indexOffset abhi pata nahi tha.
+
+phir timeline ke nodes traverse kiye and har snapshot write karne se pehle ftell() se uski starting position index array mein store ki.
+
+snapshots ke baad index array file mein write ki and actual indexOffset mil gaya.
+
+last mein fseek se file ke start par wapas gaye and header update ker diya.
+
+index ka purpose ye hai ke kisi bhi snapshot par directly jump kar saken without reading all previous snapshots.
+
+# testing 0x3
+
+pehle compilation error aya because writeInt32 and writeInt64 ki declarations writeHeader se pehle nahi thi, so function prototypes add kiye.
+
+phir program successfully run hua and session.tdbg generate hogayi.
+
+6 snapshots record huye and file size 276 bytes thi.
+
+hexdump mein TTDB magic, version 1, stepCount 6 and indexOffset 228 mila.
+
+6 index entries hain, each 8 bytes, so 228 + 48 = 276 which matches file size.
+
+index offsets bhi check kiye, last snapshot 224 par start hota hai and index 228 par.
+
+<img width="1288" height="886" alt="image" src="https://github.com/user-attachments/assets/135c89ab-d748-4549-a460-52ad6c083941" />
+
+<img width="1986" height="300" alt="image" src="https://github.com/user-attachments/assets/0fb71bae-1587-4edc-9820-ec263758f12b" />
+
+
+
 
 
 
