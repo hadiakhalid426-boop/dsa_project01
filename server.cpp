@@ -31,8 +31,8 @@ const int32_t MAX_FUNCS = 128;
 const int32_t MAX_TOKENS = MAX_VARS_PER_FRAME + 2; // kW + func_name + upto 16 params/args
 const int32_t MAX_PATCHES = MAX_FUNCS * 4;
 const uint64_t MAX_SOURCE_BYTES = 15ULL * 1024 * 1024; // sanity cap on the declared file length
-const int32_t IO_BUFFER_SIZE = 64 * 1024;                  // fixed buffer for streaming to/from disk
-const int32_t SOCKET_TIMEOUT_SEC = 5;                      // TODO: apply as SO_RCVTIMEO so a deadclient can't hang the server forever
+[[maybe_unused]] const int32_t IO_BUFFER_SIZE = 64 * 1024;                  // fixed buffer for streaming to/from disk
+[[maybe_unused]] const int32_t SOCKET_TIMEOUT_SEC = 5;                      // TODO: apply as SO_RCVTIMEO so a deadclient can't hang the server forever
 
 // ---- Custom data structures
 
@@ -251,6 +251,10 @@ struct Snapshot
     int32_t stackDepth;
 };
 
+void writeInt32(FILE *f, int32_t value);
+void writeInt64(FILE *f, int64_t value);
+
+
 struct TTDBHeader
 {
     char magic[4]; // "TTDB"
@@ -261,10 +265,14 @@ struct TTDBHeader
 
 void writeHeader(FILE *f, const TTDBHeader &h)
 {
-    fwrite(h.magic, 1, 4, f);
-    fwrite(&h.version, sizeof(int32_t), 1, f);
+    if( fwrite(h.magic, 1, 4, f) != 4){
+        throw runtime_error("Failed to write header magic");
+    }
+    // placeholder for other two data members:
 
-    // placeholder for other two data members
+    writeInt32(f, h.version);
+    writeInt32(f, h.stepCount);
+    writeInt64(f, h.indexOffset);
 
 }
 
@@ -444,7 +452,9 @@ int64_t readResolveRecord(FILE *f, string &outText)
 
     }
     //invalid size bhe ho sakta hai
-    if(size<0 || size> MAX_SOURCE_BYTES){
+
+    if (size < 0 || static_cast<uint64_t>(size) > MAX_SOURCE_BYTES) {
+    
         return -1;
 
     }
@@ -798,8 +808,9 @@ void executeProgram(const char *resolveBinPath, int64_t mainOffset, Timeline &ti
 
     int64_t pc=mainOffset;
 
-    Stack<string> bindingStack;
-    Stack<int32_t> argumentCountStack;
+    // boundNames[d][i] = name of the caller's variable passed as the i-th argument
+    // to the frame sitting at stack index d (0 = main, which never has any)
+    string boundNames[MAX_STACK_DEPTH][MAX_VARS_PER_FRAME];
 
     while(!callStack.isEmpty()){
 
@@ -836,7 +847,6 @@ void executeProgram(const char *resolveBinPath, int64_t mainOffset, Timeline &ti
         }
 
         string keyword = tokens[0].text;
-        cout << "Executing: " << line << endl;
 
         Frame &current = callStack.peek();
 
@@ -988,25 +998,20 @@ void executeProgram(const char *resolveBinPath, int64_t mainOffset, Timeline &ti
             newFrame.returnLine = static_cast<int32_t>(nextPc);
 
             for (int32_t i = 0; i < argumentCount; i++){
-
-                newFrame.argv[i].name = headerTokens[i + 2].text;
+                newFrame.argv[i].name  = headerTokens[i + 2].text;
                 newFrame.argv[i].value = getValue(current, tokens[i + 2].text);
+                // depth() is the index the new frame will get after the push
+                boundNames[callStack.depth()][i] = tokens[i + 2].text;
             }
-
-            for (int32_t i = 0; i < argumentCount; i++){
-
-                bindingStack.push(tokens[i + 2].text);
-            }
-
-            argumentCountStack.push(argumentCount);
 
             callStack.push(newFrame);
 
             // Jump to the called function's header.
             pc = targetPc;
-        }   
+        }           
         else if (keyword == "func_end"){
 
+            int32_t frameIndex = callStack.depth() - 1;   // read BEFORE popping
             Frame finished = callStack.pop();
 
             if (callStack.isEmpty()){
@@ -1016,20 +1021,12 @@ void executeProgram(const char *resolveBinPath, int64_t mainOffset, Timeline &ti
 
             Frame &caller = callStack.peek();
 
-            int32_t count = argumentCountStack.pop();
-
-            for (int32_t i = count - 1; i >= 0; i--){
-                string callerName = bindingStack.pop();
-
-                Variable *original = findVariable(caller, callerName);
-
-                if (original == nullptr){
-                    throw runtime_error("Missing caller variable");
+            for (int32_t i = 0; i < finished.argc; i++){
+                Variable *original = findVariable(caller, boundNames[frameIndex][i]);
+                if (original != nullptr){   // nullptr = a literal was passed, nothing to write back
+                    original->value = finished.argv[i].value;
                 }
-
-                original->value = finished.argv[i].value;
             }
-
             pc = finished.returnLine;
         }
         else{
@@ -1055,19 +1052,172 @@ void executeProgram(const char *resolveBinPath, int64_t mainOffset, Timeline &ti
     // execute line by line, and according to the keyword perform action
 }
 
+
+
 // PASS 0x3: SERIALIZE TIMELINE
-void writeTdbg(Timeline &timeline, const char *tdbgPath)
+
+//helpers to safely write inro bonary files
+void writeInt32(FILE *f, int32_t value)
 {
-    // placeholder for header
-    // index array of the size of stepcount from the timeline
-    // placing each snapshot in the file while maintaining the index(starting point of each nth snapshot)
-    // after timeline add the index array i the file
-    // update the header
+    if (fwrite(&value, sizeof(value), 1, f) != 1)
+    {
+        throw runtime_error("Failed to write int32");
+    }
 }
 
+void writeInt64(FILE *f, int64_t value)
+{
+    if (fwrite(&value, sizeof(value), 1, f) != 1)
+    {
+        throw runtime_error("Failed to write int64");
+    }
+}
+
+void writeString(FILE *f, const string &text)
+{
+    if (text.size() > INT32_MAX)
+    {
+        throw runtime_error("String too long");
+    }
+
+    int32_t length = static_cast<int32_t>(text.size());
+
+    writeInt32(f, length);
+
+    if (length > 0)
+    {
+        if (fwrite(text.data(), 1,
+                   static_cast<size_t>(length), f)
+            != static_cast<size_t>(length))
+        {
+            throw runtime_error("Failed to write string");
+        }
+    }
+}
+
+void writeVariable(FILE *f, const Variable &v)
+{
+    writeString(f, v.name);
+    writeInt32(f, v.value);
+    //k=12
+}
+
+void writeFrame(FILE *f, const Frame &frame)
+{
+    writeString(f, frame.func_name);
+
+    writeInt32(f, frame.argc);
+
+    for (int32_t i = 0; i < frame.argc; i++)
+    {
+        writeVariable(f, frame.argv[i]);
+    }
+
+    writeInt32(f, frame.returnLine);
+
+    writeInt32(f, frame.localCount);
+
+    for (int32_t i = 0; i < frame.localCount; i++)
+    {
+        writeVariable(f, frame.locals[i]);
+    }
+}
+
+void writeSnapshot(FILE *f, const Snapshot &snap)
+{
+    writeInt32(f, snap.stackDepth);
+
+    for (int32_t i = 0; i < snap.stackDepth; i++)
+    {
+        writeFrame(f, snap.callStack[i]);
+    }
+}
+void writeTdbg(Timeline &timeline, const char *tdbgPath)
+{
+    FILE *f = fopen(tdbgPath, "wb+");
+    if (f == nullptr)
+    {
+        throw runtime_error("Cannot create .tdbg file");
+    }
+
+    int32_t count = timeline.getStepCount();
+    int64_t *index = new int64_t[count];
+
+    try
+    {
+        // 1. Header with a placeholder indexOffset (real value not known yet)
+        TTDBHeader header{};
+        header.magic[0] = 'T';
+        header.magic[1] = 'T';
+        header.magic[2] = 'D';
+        header.magic[3] = 'B';
+        header.version = 1;
+        header.stepCount = count;
+        header.indexOffset = 0;
+        writeHeader(f, header);
+
+        // 2. Snapshots: note where each one starts, then write it
+        TimelineNode *node = timeline.begin();
+        for (int32_t i = 0; i < count; i++)
+        {
+            if (node == nullptr || node->data == nullptr)
+            {
+                throw runtime_error("Invalid timeline node");
+            }
+
+            long position = ftell(f);
+            if (position < 0)
+            {
+                throw runtime_error("Failed to get snapshot position");
+            }
+            index[i] = static_cast<int64_t>(position);
+
+            writeSnapshot(f, *(node->data));
+            node = node->next;
+        }
+
+        // 3. Index array starts here
+        long indexPosition = ftell(f);
+        if (indexPosition < 0)
+        {
+            throw runtime_error("Failed to get index position");
+        }
+        header.indexOffset = static_cast<int64_t>(indexPosition);
+
+        for (int32_t i = 0; i < count; i++)
+        {
+            writeInt64(f, index[i]);
+        }
+
+        // 4. Go back and write the header again with the real indexOffset
+        if (fseek(f, 0, SEEK_SET) != 0)
+        {
+            throw runtime_error("Failed to seek to header");
+        }
+        writeHeader(f, header);
+    }
+    catch (...)
+    {
+        // something failed: free memory, close and delete the half-written file
+        delete[] index;
+        fclose(f);
+        remove(tdbgPath);
+        throw; // pass the same error up to main()
+    }
+
+    delete[] index;
+
+    if (fclose(f) != 0)
+    {
+        remove(tdbgPath);
+        throw runtime_error("Failed to close .tdbg file");
+    }
+}
 // main section
 int32_t main()
 {
+
+    remove("session.tdbg");
 
     if (!validateProgram("source.bin"))
     {
@@ -1077,34 +1227,36 @@ int32_t main()
 
     int64_t mainOffset = resolveProgram("source.bin", "resolve.bin");
 
-    cout << "mainOffset = " << mainOffset << endl;
+
     if(mainOffset <0){
         cout<<"resolver failed"<<endl;
         return 1;
 
     }
 
-
     Timeline timeline;
-    try{
-
+    try
+    {
         executeProgram("resolve.bin", mainOffset, timeline);
+        writeTdbg(timeline, "session.tdbg");
     }
-    catch( const exception &e){
-        cout<<"error: "<<e.what()<<endl;
+    catch (const exception &e)
+    {
+        cout << "error: " << e.what() << endl;
         return 1;
     }
 
-    // writeTdbg(timeline, "session.tdbg");
-
+    cout << "session.tdbg generated successfully!" << endl;
+    cout << "Total snapshots: " << timeline.getStepCount() << endl;
     return 0;
+
 }
 
 
 
 // int32_t main()
 // {
-//     cout << "Program started!" << endl;
+//     cout << "Program started!" << endl ;
 
 //     bool valid = validateProgram("source.bin");
 
