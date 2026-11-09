@@ -154,7 +154,7 @@ set (e.g  set k 10)  par pehle getValue se value 10 milti hai. Phir findVariable
 add/ sub/ mul/ div:  (e.g add b 5) par b ko dhoond kar uski value se result nikale ga
 
 
-call: `call foo k` call par us record ke offset me call hone wala pc hota he hai jp target pc hai
+call: call par us record ke offset me call hone wala pc hota he hai jp target pc hai
 
 
 func_end: current frame pop hota hai and stack khali ho gaya to main khatam verna parameters ki final values asli variables ki values ban jati hain ( jese foo mein b=15, main mein k=15 ki value hoti hai) or pc = returnLine.
